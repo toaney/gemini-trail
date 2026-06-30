@@ -1,5 +1,6 @@
 import json
 import os
+import time
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import SystemMessage, HumanMessage
 
@@ -17,8 +18,9 @@ from engine import (
 
 
 def _get_llm() -> ChatGoogleGenerativeAI:
+    model = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
     return ChatGoogleGenerativeAI(
-        model="gemini-2.5-flash",
+        model=model,
         google_api_key=os.getenv("GEMINI_API_KEY"),
         temperature=0.8,
     )
@@ -34,7 +36,7 @@ def setup_node(state: GameState) -> dict:
     occupation = game.get("occupation", "carpenter")
     occ_cfg = cfg["occupations"][occupation]
 
-    game.setdefault("phase", "preparation")
+    game["phase"] = "preparation"
     game.setdefault("day", 0)
     game.setdefault("distance_traveled", 0.0)
     game.setdefault("terrain", "coastal")
@@ -52,15 +54,15 @@ def setup_node(state: GameState) -> dict:
     ])
 
     game["supplies"] = {
-        "food_days": 0.0,
-        "water_days": 0.0,
-        "medicine_kits": 0,
-        "ammo_rounds": 0,
-        "fuel_gallons": 0.0,
+        "food_days": 100.0,
+        "water_days": 50.0,
+        "medicine_kits": 1,
+        "ammo_rounds": 40,
+        "fuel_gallons": 80.0,
         "trade_goods": occ_cfg["starting_budget"],
-        "spare_tires": 0,
+        "spare_tires": 1,
         "engine_kits": 0,
-        "generic_parts": 0,
+        "generic_parts": 1,
     }
 
     store_key = "long_beach"
@@ -123,7 +125,7 @@ def _handle_preparation(game: dict, message: str) -> dict:
     cfg = get_config()
 
     buy_keywords = ["buy", "get", "purchase", "take", "grab"]
-    leave_keywords = ["go", "leave", "start", "head out", "depart", "begin", "hit the road", "ready"]
+    leave_keywords = ["go", "leave", "head out", "depart", "hit the road", "ready", "let's roll", "move out"]
 
     if any(kw in msg for kw in leave_keywords):
         game["phase"] = "on_trail"
@@ -305,25 +307,62 @@ def _extract_name(game: dict, message: str) -> str | None:
     return None
 
 
+# Actions that never need LLM narration when no events fired
+TEMPLATE_ACTIONS = {"travel", "change_pace", "change_rations", "rest"}
+
+
+def _invoke_with_retry(llm, messages, max_retries: int = 3):
+    """Invoke the LLM with exponential backoff on 429 rate-limit errors."""
+    delay = 20
+    for attempt in range(max_retries):
+        try:
+            return llm.invoke(messages)
+        except Exception as e:
+            err = str(e)
+            if "429" in err or "RESOURCE_EXHAUSTED" in err:
+                if attempt < max_retries - 1:
+                    time.sleep(delay)
+                    delay *= 2
+                    continue
+            raise
+    return llm.invoke(messages)
+
+
 def narrate_node(state: GameState) -> dict:
-    """Calls Gemini to generate narrative and suggestions."""
+    """Calls Gemini to generate narrative and suggestions, with a fast-path for routine travel."""
     game = dict(state["game"])
     messages = list(state.get("messages", []))
     last_player_message = messages[-1].content if messages else ""
 
     events = game.pop("_events_this_turn", [])
     action_context = game.pop("_action_context", {})
+    action = action_context.get("action")
 
+    # Fast-path: skip the LLM whenever a routine on-trail action produced no events
+    is_template = (
+        action in TEMPLATE_ACTIONS
+        and not events
+        and game.get("phase") == "on_trail"
+        and not game.get("outcome")
+        and not action_context.get("arrived_at")
+    )
+
+    if is_template:
+        game["suggestions"] = ["Continue traveling", "Rest for the day", "Scavenge for supplies", "Change pace"]
+        game["_last_narrative"] = _template_narrative(game, action_context)
+        return {**state, "game": game}
+
+    # Full LLM path
     events_summary = _summarize_events(events, action_context)
-
     system_prompt = build_system_prompt(game)
     turn_context = build_turn_context(game, events_summary)
 
     llm = _get_llm()
-    response = llm.invoke([
+    messages_to_send = [
         SystemMessage(content=system_prompt),
         HumanMessage(content=f"{turn_context}\n\nPLAYER: {last_player_message}\n\nRespond with JSON only."),
-    ])
+    ]
+    response = _invoke_with_retry(llm, messages_to_send)
 
     try:
         raw = response.content.strip()
@@ -341,12 +380,20 @@ def narrate_node(state: GameState) -> dict:
             "suggestions": ["Continue driving", "Check your supplies", "Rest here"],
         }
 
+    VALID_PACES = {"steady", "fast", "reckless"}
+    PACE_ALIASES = {"normal": "steady", "moderate": "steady", "slow": "steady", "quick": "fast", "hurry": "fast"}
+    VALID_RATIONS = {"meager", "filling", "bare_minimum", "normal"}
+
     if result.get("state_delta"):
         delta = result["state_delta"]
         if "pace" in delta:
-            game["pace"] = delta["pace"]
+            raw_pace = str(delta["pace"]).lower()
+            game["pace"] = PACE_ALIASES.get(raw_pace, raw_pace) if raw_pace not in VALID_PACES else raw_pace
+            if game["pace"] not in VALID_PACES:
+                game["pace"] = "steady"
         if "rations" in delta:
-            game["rations"] = delta["rations"]
+            raw_rations = str(delta["rations"]).lower()
+            game["rations"] = raw_rations if raw_rations in VALID_RATIONS else "filling"
         if "weather" in delta:
             game["weather"] = delta["weather"]
 
@@ -354,6 +401,89 @@ def narrate_node(state: GameState) -> dict:
     game["_last_narrative"] = result.get("narrative", "")
 
     return {**state, "game": game}
+
+
+_TERRAIN_DESC = {
+    "coastal":     "along the crumbling coastal highway",
+    "deep_desert": "across scorched, sun-blasted desert",
+    "high_desert": "through the sparse high desert",
+    "plains":      "across the open, wind-swept plains",
+    "swamp":       "through dense, fetid swampland",
+    "woodland":    "through overgrown, reclaimed woodland",
+    "urban_ruins": "through the shattered remnants of a city",
+}
+
+_WEATHER_LINE = {
+    "clear":        "Clear skies.",
+    "cloudy":       "Heavy clouds roll in from the west.",
+    "rain":         "Steady rain drums on the roof.",
+    "storm":        "A violent storm batters the vehicle.",
+    "extreme_heat": "The heat is punishing, radiating off the asphalt.",
+    "extreme_cold": "Bitter cold seeps through every seam.",
+}
+
+
+def _template_narrative(game: dict, action_context: dict) -> str:
+    action  = action_context.get("action", "travel")
+    day     = game.get("day", 0)
+    dist    = game.get("distance_traveled", 0.0)
+    terrain = game.get("terrain", "plains")
+    weather = game.get("weather", "clear")
+    next_lm = game.get("next_landmark", "the next settlement")
+    supplies = game.get("supplies", {})
+    food  = supplies.get("food_days", 0)
+    water = supplies.get("water_days", 0)
+    fuel  = supplies.get("fuel_gallons", 0)
+
+    terrain_desc = _TERRAIN_DESC.get(terrain, "down the broken road")
+    weather_line = _WEATHER_LINE.get(weather, "")
+
+    if action == "rest":
+        parts = [
+            f"Day {day}. The party makes camp {terrain_desc}. {weather_line}".strip(),
+            "You rest through the night, letting exhaustion ease out of tired muscles.",
+            f"{dist:.0f} miles from Long Beach. Next stop: {next_lm}.",
+        ]
+    elif action == "change_pace":
+        pace = game.get("pace", "steady")
+        pace_line = {
+            "steady":   "You ease off, settling into a steady, fuel-conscious rhythm.",
+            "fast":     "You push harder. The engine climbs, eating up road.",
+            "reckless": "Pedal down. The vehicle screams east. Every mile costs.",
+        }.get(pace, "You adjust your pace.")
+        parts = [
+            f"Day {day}. {pace_line} {weather_line}".strip(),
+            f"{dist:.0f} miles from Long Beach. Next stop: {next_lm}.",
+        ]
+    elif action == "change_rations":
+        rations = game.get("rations", "filling")
+        rations_line = {
+            "meager":       "Rations cut. Everyone gets less. Hunger is a passenger now.",
+            "bare_minimum": "Bare minimum. Just enough to keep moving.",
+            "filling":      "Full rations restored. The party eats well for now.",
+            "normal":       "Rations back to normal.",
+        }.get(rations, "Rations adjusted.")
+        parts = [
+            f"Day {day}. {rations_line}",
+            f"{dist:.0f} miles from Long Beach. Next stop: {next_lm}.",
+        ]
+    else:  # travel
+        parts = [
+            f"Day {day}. You push {terrain_desc}. {weather_line}".strip(),
+            f"{dist:.0f} miles from Long Beach. Next stop: {next_lm}.",
+        ]
+
+    warnings = []
+    if food < 5:     warnings.append("food critically low")
+    elif food < 15:  warnings.append("food running short")
+    if water < 3:    warnings.append("water nearly gone")
+    elif water < 10: warnings.append("water getting scarce")
+    if fuel < 10:    warnings.append("fuel dangerously low")
+    elif fuel < 20:  warnings.append("fuel dropping")
+    if warnings:
+        parts.append(f"Warning: {', '.join(warnings)}.")
+
+    return " ".join(parts)
 
 
 def _summarize_events(events: list, action_context: dict) -> str:

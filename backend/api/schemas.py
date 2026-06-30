@@ -19,3 +19,6 @@ class GameSessionResponse(BaseModel):
     player_name: str
     occupation: str
     departure_month: str
+    opening_narrative: str = ""
+    opening_suggestions: list[str] = []
+    initial_game_state: dict = {}

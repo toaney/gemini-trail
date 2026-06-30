@@ -8,7 +8,7 @@ def calculate_distance(game: dict) -> float:
     terrain = game.get("terrain", "plains")
     weather = game.get("weather", "clear")
 
-    base = travel["base_miles_per_day"][pace]
+    base = travel["base_miles_per_day"].get(pace, travel["base_miles_per_day"]["steady"])
     terrain_mod = travel["terrain_modifier"].get(terrain, 1.0)
     weather_mod = cfg["events"]["weather_travel_modifier"].get(weather, 1.0)
 

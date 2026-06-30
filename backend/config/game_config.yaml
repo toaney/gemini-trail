@@ -330,9 +330,9 @@ consumption:
 
 travel:
   base_miles_per_day:
-    steady:   15
-    fast:     20
-    reckless: 27
+    steady:   100
+    fast:     150
+    reckless: 200
 
   terrain_modifier:
     deep_desert:  0.85

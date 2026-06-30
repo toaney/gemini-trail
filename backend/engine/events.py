@@ -155,7 +155,7 @@ def _roll_weather_change(game: dict) -> dict | None:
         return None
 
     month = game.get("departure_month", "march").lower()
-    dist = game["events"]["weather_change"]["distributions"].get(month, {})
+    dist = cfg["events"]["weather_change"]["distributions"].get(month, {})
     if not dist:
         return None
 

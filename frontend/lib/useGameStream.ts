@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { GameState, SSEEvent } from "./types";
 
 export function useGameStream() {
@@ -10,7 +10,13 @@ export function useGameStream() {
   const [streaming, setStreaming] = useState(false);
   const [threadId, setThreadId] = useState<string | null>(null);
   const [gameOver, setGameOver] = useState<{ outcome: string; reason: string } | null>(null);
+  const [autoTravel, setAutoTravel] = useState(false);
   const currentTokenRef = useRef<string>("");
+  const autoTravelRef = useRef(false);
+
+  useEffect(() => {
+    autoTravelRef.current = autoTravel;
+  }, [autoTravel]);
 
   const startNewGame = useCallback(async (form: {
     partyNames: string[];
@@ -31,9 +37,11 @@ export function useGameStream() {
     if (!res.ok) throw new Error("Failed to start game");
     const data = await res.json();
     setThreadId(data.thread_id);
-    setNarrative([]);
-    setSuggestions(["Buy food and water", "Stock up on fuel", "Buy spare parts"]);
+    setNarrative(data.opening_narrative ? [data.opening_narrative] : []);
+    setSuggestions(data.opening_suggestions?.length ? data.opening_suggestions : []);
+    setGameState(data.initial_game_state ?? null);
     setGameOver(null);
+    setAutoTravel(false);
     return data.thread_id;
   }, []);
 
@@ -42,7 +50,7 @@ export function useGameStream() {
 
     setStreaming(true);
     currentTokenRef.current = "";
-    setNarrative(prev => [...prev, `> ${message}`, ""]);
+    setNarrative(prev => [...prev, `> ${message}`, "…"]);
 
     const narrativeIndex = narrative.length + 1;
 
@@ -87,12 +95,11 @@ export function useGameStream() {
 
   const handleSSEEvent = useCallback((event: SSEEvent, narrativeIndex: number) => {
     switch (event.type) {
-      case "token":
-        if (event.content) {
-          currentTokenRef.current += event.content;
+      case "narrative":
+        if (event.text) {
           setNarrative(prev => {
             const updated = [...prev];
-            updated[narrativeIndex] = currentTokenRef.current;
+            updated[narrativeIndex] = event.text!;
             return updated;
           });
         }
@@ -101,6 +108,10 @@ export function useGameStream() {
       case "state_update":
         if (event.game) {
           setGameState(event.game);
+          // Stop auto-travel when player needs to make a decision
+          if (event.game.phase !== "on_trail") {
+            setAutoTravel(false);
+          }
         }
         break;
 
@@ -112,8 +123,38 @@ export function useGameStream() {
 
       case "game_over":
         setGameOver({ outcome: event.outcome ?? "unknown", reason: event.reason ?? "" });
+        setAutoTravel(false);
+        break;
+
+      case "error":
+        setAutoTravel(false);
+        setNarrative(prev => {
+          const updated = [...prev];
+          updated[narrativeIndex] = `[Error: ${event.message ?? "something went wrong"}]`;
+          return updated;
+        });
         break;
     }
+  }, []);
+
+  // Auto-travel: fire the next travel turn after a short pause once streaming settles
+  useEffect(() => {
+    if (!autoTravel) return;
+    if (streaming) return;
+    if (gameOver) return;
+    if (gameState?.phase !== "on_trail") return;
+
+    const timer = setTimeout(() => {
+      if (autoTravelRef.current) {
+        sendAction("continue traveling");
+      }
+    }, 900);
+
+    return () => clearTimeout(timer);
+  }, [autoTravel, streaming, gameOver, gameState?.phase, sendAction]);
+
+  const toggleAutoTravel = useCallback(() => {
+    setAutoTravel(prev => !prev);
   }, []);
 
   return {
@@ -123,7 +164,9 @@ export function useGameStream() {
     streaming,
     threadId,
     gameOver,
+    autoTravel,
     startNewGame,
     sendAction,
+    toggleAutoTravel,
   };
 }

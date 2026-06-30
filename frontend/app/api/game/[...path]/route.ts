@@ -2,9 +2,12 @@ import { NextRequest } from "next/server";
 
 const BACKEND_URL = process.env.BACKEND_URL ?? "http://localhost:8000";
 
-export async function POST(req: NextRequest) {
-  const path = req.nextUrl.pathname.replace("/api/game", "");
-  const url = `${BACKEND_URL}/api/game${path}`;
+export async function POST(
+  req: NextRequest,
+  { params }: { params: Promise<{ path: string[] }> },
+) {
+  const { path } = await params;
+  const url = `${BACKEND_URL}/api/game/${path.join("/")}`;
   const body = await req.text();
 
   const upstream = await fetch(url, {
@@ -27,9 +30,13 @@ export async function POST(req: NextRequest) {
   return Response.json(data, { status: upstream.status });
 }
 
-export async function GET(req: NextRequest) {
-  const path = req.nextUrl.pathname.replace("/api", "");
-  const upstream = await fetch(`${BACKEND_URL}${path}`);
+export async function GET(
+  _req: NextRequest,
+  { params }: { params: Promise<{ path: string[] }> },
+) {
+  const { path } = await params;
+  const url = `${BACKEND_URL}/api/game/${path.join("/")}`;
+  const upstream = await fetch(url);
   const data = await upstream.json();
   return Response.json(data, { status: upstream.status });
 }

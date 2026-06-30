@@ -5,6 +5,7 @@ import { useGameStream } from "@/lib/useGameStream";
 import StatsPanel from "@/components/StatsPanel";
 import NarrativePanel from "@/components/NarrativePanel";
 import ActionInput from "@/components/ActionInput";
+import TrailMap from "@/components/TrailMap";
 
 const OCCUPATIONS = [
   { id: "bunker_ceo", label: "Bunker CEO", desc: "High resources, great negotiator. Soft hands." },
@@ -20,7 +21,7 @@ export default function Page() {
   const [occupation, setOccupation] = useState("engineer");
   const [month, setMonth] = useState("March");
 
-  const { narrative, gameState, suggestions, streaming, gameOver, startNewGame, sendAction } = useGameStream();
+  const { narrative, gameState, suggestions, streaming, gameOver, autoTravel, startNewGame, sendAction, toggleAutoTravel } = useGameStream();
 
   const handleStart = async () => {
     if (partyNames.some(n => !n.trim())) return;
@@ -118,7 +119,7 @@ export default function Page() {
 
   return (
     <div className="h-screen flex flex-col overflow-hidden">
-      <header className="border-b border-ash-700 px-4 py-2 font-mono text-xs text-zinc-400 flex gap-4">
+      <header className="border-b border-ash-700 px-4 py-2 font-mono text-xs text-zinc-400 flex gap-4 items-center">
         <span className="text-rust-400 uppercase tracking-widest">Gemini Trail</span>
         {gameState && (
           <>
@@ -137,6 +138,10 @@ export default function Page() {
         )}
       </header>
 
+      {gameState && (
+        <TrailMap game={gameState} moving={autoTravel && !streaming} />
+      )}
+
       <div className="flex flex-1 overflow-hidden">
         <aside className="w-48 border-r border-ash-700 p-3 overflow-y-auto bg-ash-800 shrink-0">
           {gameState ? (
@@ -152,7 +157,10 @@ export default function Page() {
             suggestions={suggestions}
             streaming={streaming}
             disabled={!!gameOver}
+            phase={gameState?.phase}
+            autoTravel={autoTravel}
             onSubmit={sendAction}
+            onToggleAutoTravel={toggleAutoTravel}
           />
         </main>
       </div>

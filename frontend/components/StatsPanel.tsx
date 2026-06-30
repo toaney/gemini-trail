@@ -56,6 +56,7 @@ export default function StatsPanel({ game }: Props) {
             {vehicle_condition}%
           </span>
         </div>
+        <DrainBar value={vehicle_condition} max={100} />
       </div>
 
       <div>
@@ -74,20 +75,40 @@ export default function StatsPanel({ game }: Props) {
 
       <div>
         <div className="text-sand-300 text-xs uppercase tracking-widest mb-1">Supplies</div>
-        <SupplyRow label="Food"     value={`${supplies.food_days.toFixed(1)} days`}  warn={supplies.food_days < 3} />
-        <SupplyRow label="Water"    value={`${supplies.water_days.toFixed(1)} days`} warn={supplies.water_days < 2} />
-        <SupplyRow label="Fuel"     value={`${supplies.fuel_gallons.toFixed(1)} gal`} warn={supplies.fuel_gallons < 5} />
-        <SupplyRow label="Medicine" value={`${supplies.medicine_kits} kits`}         warn={supplies.medicine_kits === 0} />
-        <SupplyRow label="Ammo"     value={`${supplies.ammo_rounds} rds`}            warn={supplies.ammo_rounds < 10} />
-        <SupplyRow label="Trade"    value={`${supplies.trade_goods} goods`}          warn={false} />
+        <SupplyRow label="Food"  value={`${supplies.food_days.toFixed(1)}d`}   warn={supplies.food_days < 5} />
+        <DrainBar value={supplies.food_days}    max={100} warn={supplies.food_days < 5} />
+        <SupplyRow label="Water" value={`${supplies.water_days.toFixed(1)}d`}  warn={supplies.water_days < 3} />
+        <DrainBar value={supplies.water_days}   max={50}  warn={supplies.water_days < 3} />
+        <SupplyRow label="Fuel"  value={`${supplies.fuel_gallons.toFixed(1)}g`} warn={supplies.fuel_gallons < 10} />
+        <DrainBar value={supplies.fuel_gallons} max={80}  warn={supplies.fuel_gallons < 10} />
+        <div className="mt-1"/>
+        <SupplyRow label="Medicine" value={`${supplies.medicine_kits} kits`}  warn={supplies.medicine_kits === 0} />
+        <SupplyRow label="Ammo"     value={`${supplies.ammo_rounds} rds`}     warn={supplies.ammo_rounds < 10} />
+        <SupplyRow label="Trade"    value={`${supplies.trade_goods} goods`}   warn={false} />
       </div>
 
       <div>
         <div className="text-sand-300 text-xs uppercase tracking-widest mb-1">Parts</div>
-        <SupplyRow label="Tires"   value={`${supplies.spare_tires}`}  warn={supplies.spare_tires === 0} />
-        <SupplyRow label="Engine"  value={`${supplies.engine_kits}`}  warn={false} />
+        <SupplyRow label="Tires"   value={`${supplies.spare_tires}`}   warn={supplies.spare_tires === 0} />
+        <SupplyRow label="Engine"  value={`${supplies.engine_kits}`}   warn={false} />
         <SupplyRow label="Generic" value={`${supplies.generic_parts}`} warn={false} />
       </div>
+    </div>
+  );
+}
+
+function DrainBar({ value, max, warn }: { value: number; max: number; warn?: boolean }) {
+  const pct = Math.min(100, Math.max(0, (value / max) * 100));
+  const color = warn         ? "bg-red-500"
+              : pct > 60     ? "bg-green-600"
+              : pct > 25     ? "bg-yellow-500"
+              :                "bg-red-500";
+  return (
+    <div className="h-0.5 bg-ash-700 rounded-full mb-1.5 mt-0.5">
+      <div
+        className={`h-full rounded-full transition-all duration-700 ${color}`}
+        style={{ width: `${pct}%` }}
+      />
     </div>
   );
 }

@@ -35,19 +35,23 @@ async def new_game(req: NewGameRequest, request: Request):
     initial_game = _initial_game_state(req)
 
     config = {"configurable": {"thread_id": thread_id}}
-    await graph.ainvoke(
+    result = await graph.ainvoke(
         {
-            "messages": [HumanMessage(content="start new game")],
+            "messages": [HumanMessage(content="view supplies")],
             "game": initial_game,
         },
         config=config,
     )
 
+    game = result.get("game", {})
     return GameSessionResponse(
         thread_id=thread_id,
-        player_name=req.player_names[0] if req.party_names else req.player_name,
+        player_name=req.party_names[0] if req.party_names else req.player_name,
         occupation=req.occupation,
         departure_month=req.departure_month,
+        opening_narrative=game.get("_last_narrative", ""),
+        opening_suggestions=game.get("suggestions", []),
+        initial_game_state=_safe_game_state(game),
     )
 
 
@@ -58,31 +62,25 @@ async def stream_action(req: ActionRequest, request: Request):
 
     async def event_generator():
         try:
-            async for event in graph.astream_events(
+            result = await graph.ainvoke(
                 {"messages": [HumanMessage(content=req.message)]},
                 config=config,
-                version="v2",
-            ):
-                kind = event.get("event")
+            )
+            game = result.get("game", {})
+            if game:
+                narrative_text = game.get("_last_narrative", "")
+                if narrative_text:
+                    yield f"data: {json.dumps({'type': 'narrative', 'text': narrative_text})}\n\n"
 
-                if kind == "on_chat_model_stream":
-                    chunk = event["data"].get("chunk")
-                    if chunk and hasattr(chunk, "content") and chunk.content:
-                        yield f"data: {json.dumps({'type': 'token', 'content': chunk.content})}\n\n"
+                safe_game = _safe_game_state(game)
+                yield f"data: {json.dumps({'type': 'state_update', 'game': safe_game})}\n\n"
 
-                elif kind == "on_chain_end" and event.get("name") == "narrate":
-                    output = event.get("data", {}).get("output", {})
-                    game = output.get("game", {})
-                    if game:
-                        safe_game = _safe_game_state(game)
-                        yield f"data: {json.dumps({'type': 'state_update', 'game': safe_game})}\n\n"
+                suggestions = game.get("suggestions", [])
+                if suggestions:
+                    yield f"data: {json.dumps({'type': 'suggestions', 'actions': suggestions})}\n\n"
 
-                        suggestions = game.get("suggestions", [])
-                        if suggestions:
-                            yield f"data: {json.dumps({'type': 'suggestions', 'actions': suggestions})}\n\n"
-
-                        if game.get("outcome"):
-                            yield f"data: {json.dumps({'type': 'game_over', 'outcome': game['outcome'], 'reason': game.get('outcome_reason', '')})}\n\n"
+                if game.get("outcome"):
+                    yield f"data: {json.dumps({'type': 'game_over', 'outcome': game['outcome'], 'reason': game.get('outcome_reason', '')})}\n\n"
 
             yield f"data: {json.dumps({'type': 'done'})}\n\n"
 

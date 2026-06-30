@@ -21,3 +21,8 @@ html, body {
   background: #c0522a;
   border-radius: 2px;
 }
+
+@keyframes wheel-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}

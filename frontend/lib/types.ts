@@ -48,7 +48,8 @@ export interface GameState {
 }
 
 export interface SSEEvent {
-  type: "token" | "state_update" | "suggestions" | "game_over" | "done" | "error";
+  type: "narrative" | "token" | "state_update" | "suggestions" | "game_over" | "done" | "error";
+  text?: string;
   content?: string;
   game?: GameState;
   actions?: string[];
