@@ -1,0 +1,547 @@
+trail:
+  total_distance: 3245
+  origin: "Long Beach, CA"
+  destination: "Washington, DC"
+  landmarks:
+    - name: "Las Vegas"
+      state: "NV"
+      mile: 270
+      type: settlement
+      faction: raiders
+      terrain: deep_desert
+      region: west
+      danger_level: high
+      description: "Raider-controlled ruins. The Strip is a black market now."
+
+    - name: "Phoenix"
+      state: "AZ"
+      mile: 565
+      type: settlement
+      faction: survivors
+      terrain: deep_desert
+      region: west
+      danger_level: medium
+      description: "Scorched sprawl. Sparse but stable survivor camp on the north edge."
+
+    - name: "Roswell"
+      state: "NM"
+      mile: 1025
+      type: settlement
+      faction: cult
+      terrain: high_desert
+      region: west
+      danger_level: medium
+      bunker_ceo_unlocks_hidden_stock: true
+      description: "Cult territory. They believe the apocalypse was extraterrestrial."
+
+    - name: "Fort Worth"
+      state: "TX"
+      mile: 1525
+      type: settlement
+      faction: militia
+      terrain: plains
+      region: west
+      danger_level: low
+      description: "Texas militia stronghold. Largest settlement west of the Mississippi."
+
+    - name: "Shreveport"
+      state: "LA"
+      mile: 1805
+      type: settlement
+      faction: survivors
+      terrain: swamp
+      region: west
+      danger_level: medium
+      description: "Rough swamp town. Disease is rampant but so is medicine production."
+
+    - name: "Mississippi Crossing"
+      state: "MS"
+      mile: 2005
+      type: event
+      faction: none
+      terrain: swamp
+      region: west
+      danger_level: high
+      description: "The bridges are down. You must find a way across."
+      crossing_options:
+        - id: bridge
+          label: "Search for intact bridge"
+          fuel_cost: 2
+          time_days: 2
+          vehicle_damage: 0
+          risk: high
+          trade_goods_cost: 0
+          notes: "Raider-held. Combat likely."
+        - id: ferry
+          label: "Pay the ferryman"
+          fuel_cost: 0
+          time_days: 1
+          vehicle_damage: 0
+          risk: low
+          trade_goods_cost: 12
+          notes: "Safe but expensive. Requires trade goods."
+        - id: raft
+          label: "Build a raft"
+          fuel_cost: 0
+          time_days: 3
+          vehicle_damage: 25
+          risk: medium
+          trade_goods_cost: 0
+          notes: "Carpenter occupation halves vehicle damage."
+        - id: detour
+          label: "Take the long detour"
+          fuel_cost: 8
+          time_days: 4
+          vehicle_damage: 0
+          risk: low
+          trade_goods_cost: 0
+          notes: "Safe but burns fuel and time."
+
+    - name: "Tuscaloosa"
+      state: "AL"
+      mile: 2275
+      type: settlement
+      faction: community
+      terrain: woodland
+      region: east
+      danger_level: low
+      description: "Stadium-fortress. Farming commune. Suspicious of outsiders but fair."
+
+    - name: "Atlanta"
+      state: "GA"
+      mile: 2425
+      type: settlement
+      faction: contested
+      terrain: urban_ruins
+      region: east
+      danger_level: high
+      description: "Largest city on the route. Faction wars make it dangerous but well-supplied."
+
+    - name: "Charleston"
+      state: "SC"
+      mile: 2715
+      type: settlement
+      faction: naval
+      terrain: coastal
+      region: east
+      danger_level: low
+      description: "Naval faction controls the port. Sea trade makes it the most civilized stop."
+
+occupations:
+  bunker_ceo:
+    label: "Bunker CEO"
+    starting_budget: 80
+    trade_modifier: 1.8
+    repair_modifier: 1.0
+    combat_modifier: 0.8
+    scavenge_modifier: 1.0
+    carpenter_shelter_modifier: 1.0
+    morale_base: -5
+    description: >
+      You survived the apocalypse in a private bunker while others suffered.
+      You have money and connections, but your hands have never seen hard work.
+    perk: "Negotiation — better prices at every settlement and unlocks hidden inventory."
+
+  engineer:
+    label: "Engineer"
+    starting_budget: 50
+    trade_modifier: 1.0
+    repair_modifier: 0.5
+    repair_success_rate: 0.90
+    combat_modifier: 1.0
+    scavenge_modifier: 1.0
+    scavenge_electronics_bonus: 0.4
+    parts_efficiency: 2.0
+    morale_base: 0
+    description: >
+      Systems thinker. You kept machines running before, and you keep them running now.
+      The vehicle is your domain.
+    perk: "Mechanics — repairs cost 50% less and each spare parts kit covers two breakdowns."
+
+  carpenter:
+    label: "Carpenter"
+    starting_budget: 30
+    trade_modifier: 1.0
+    repair_modifier: 1.0
+    combat_modifier: 1.1
+    scavenge_modifier: 1.0
+    scavenge_materials_bonus: 0.4
+    shelter_modifier: 0.5
+    raft_damage_modifier: 0.5
+    morale_base: 5
+    description: >
+      You build what you need and fix what you can. People trust someone practical.
+      You can't fix an engine, but you can fortify anything.
+    perk: "Builder — shelter events cost half, raft crossing halves vehicle damage."
+
+store:
+  long_beach:
+    label: "Long Beach Survivor Market"
+    faction: survivors
+    trade_modifier: 1.0
+    inventory:
+      food:          { price: 2,  stock: 20, unit: "3 days supply" }
+      water:         { price: 1,  stock: 15, unit: "3 days supply" }
+      medicine:      { price: 8,  stock: 6,  unit: "1 kit" }
+      ammo:          { price: 3,  stock: 10, unit: "20 rounds" }
+      fuel:          { price: 4,  stock: 8,  unit: "5 gallons" }
+      spare_tire:    { price: 6,  stock: 3,  unit: "1 tire" }
+      engine_kit:    { price: 10, stock: 2,  unit: "1 kit" }
+      generic_parts: { price: 4,  stock: 4,  unit: "1 bundle" }
+      trade_goods:   { price: 5,  stock: 5,  unit: "5 goods" }
+
+  las_vegas:
+    label: "The Strip Black Market"
+    faction: raiders
+    trade_modifier: 1.0
+    inventory:
+      food:          { price: 4, stock: 3, unit: "3 days supply" }
+      water:         { available: false }
+      medicine:      { available: false }
+      ammo:          { price: 2, stock: 8, unit: "20 rounds" }
+      fuel:          { price: 6, stock: 5, unit: "5 gallons" }
+      spare_tire:    { available: false }
+      engine_kit:    { available: false }
+      generic_parts: { available: false }
+      trade_goods:   { available: false }
+
+  phoenix:
+    label: "North Phoenix Camp"
+    faction: survivors
+    trade_modifier: 0.9
+    inventory:
+      food:          { price: 3, stock: 4, unit: "3 days supply" }
+      water:         { price: 2, stock: 6, unit: "3 days supply" }
+      medicine:      { price: 10, stock: 2, unit: "1 kit" }
+      ammo:          { available: false }
+      fuel:          { price: 6, stock: 3, unit: "5 gallons" }
+      spare_tire:    { available: false }
+      engine_kit:    { available: false }
+      generic_parts: { available: false }
+      trade_goods:   { available: false }
+
+  roswell:
+    label: "The Compound"
+    faction: cult
+    trade_modifier: 1.2
+    inventory:
+      food:          { price: 3, stock: 6, unit: "3 days supply" }
+      water:         { price: 3, stock: 2, unit: "3 days supply" }
+      medicine:      { available: false }
+      ammo:          { available: false }
+      fuel:          { available: false }
+      spare_tire:    { available: false }
+      engine_kit:    { available: false }
+      generic_parts: { available: false }
+      trade_goods:   { available: false }
+    hidden_stock:
+      medicine:      { price: 6, stock: 3, unit: "1 kit" }
+      fuel:          { price: 8, stock: 2, unit: "5 gallons" }
+
+  fort_worth:
+    label: "Fort Worth Militia Depot"
+    faction: militia
+    trade_modifier: 1.0
+    inventory:
+      food:          { price: 3,  stock: 6, unit: "3 days supply" }
+      water:         { price: 2,  stock: 4, unit: "3 days supply" }
+      medicine:      { price: 9,  stock: 3, unit: "1 kit" }
+      ammo:          { price: 3,  stock: 6, unit: "20 rounds" }
+      fuel:          { price: 5,  stock: 6, unit: "5 gallons" }
+      spare_tire:    { price: 7,  stock: 2, unit: "1 tire" }
+      engine_kit:    { price: 12, stock: 1, unit: "1 kit" }
+      generic_parts: { price: 5,  stock: 3, unit: "1 bundle" }
+      trade_goods:   { available: false }
+
+  shreveport:
+    label: "Shreveport Trading Post"
+    faction: survivors
+    trade_modifier: 1.1
+    inventory:
+      food:          { price: 4, stock: 3, unit: "3 days supply" }
+      water:         { available: false }
+      medicine:      { price: 7, stock: 5, unit: "1 kit" }
+      ammo:          { price: 4, stock: 3, unit: "20 rounds" }
+      fuel:          { price: 7, stock: 2, unit: "5 gallons" }
+      spare_tire:    { available: false }
+      engine_kit:    { available: false }
+      generic_parts: { price: 6, stock: 2, unit: "1 bundle" }
+      trade_goods:   { available: false }
+
+  tuscaloosa:
+    label: "Bryant-Denny Market"
+    faction: community
+    trade_modifier: 0.85
+    inventory:
+      food:          { price: 2, stock: 8, unit: "3 days supply" }
+      water:         { price: 1, stock: 8, unit: "3 days supply" }
+      medicine:      { available: false }
+      ammo:          { available: false }
+      fuel:          { price: 5, stock: 3, unit: "5 gallons" }
+      spare_tire:    { available: false }
+      engine_kit:    { available: false }
+      generic_parts: { price: 5, stock: 2, unit: "1 bundle" }
+      trade_goods:   { available: false }
+
+  atlanta:
+    label: "Atlanta Faction Market"
+    faction: contested
+    trade_modifier: 1.15
+    inventory:
+      food:          { price: 3, stock: 4,  unit: "3 days supply" }
+      water:         { price: 2, stock: 3,  unit: "3 days supply" }
+      medicine:      { price: 8, stock: 3,  unit: "1 kit" }
+      ammo:          { price: 3, stock: 7,  unit: "20 rounds" }
+      fuel:          { price: 5, stock: 5,  unit: "5 gallons" }
+      spare_tire:    { price: 7, stock: 2,  unit: "1 tire" }
+      engine_kit:    { price: 10, stock: 1, unit: "1 kit" }
+      generic_parts: { price: 5, stock: 3,  unit: "1 bundle" }
+      trade_goods:   { available: false }
+
+  charleston:
+    label: "Port Charleston Exchange"
+    faction: naval
+    trade_modifier: 0.9
+    inventory:
+      food:          { price: 3, stock: 6, unit: "3 days supply" }
+      water:         { price: 2, stock: 6, unit: "3 days supply" }
+      medicine:      { price: 7, stock: 4, unit: "1 kit" }
+      ammo:          { available: false }
+      fuel:          { price: 5, stock: 3, unit: "5 gallons" }
+      spare_tire:    { available: false }
+      engine_kit:    { available: false }
+      generic_parts: { available: false }
+      trade_goods:   { available: false }
+
+consumption:
+  food_days_per_person_per_day:
+    filling:      1.0
+    meager:       0.67
+    bare_minimum: 0.33
+
+  water_days_per_person_per_day:
+    normal:    0.33
+    heat_zone: 0.55
+
+  fuel_gallons_per_day:
+    highway:       3.5
+    rough_terrain: 5.0
+    rest_day:      0.5
+
+travel:
+  base_miles_per_day:
+    steady:   15
+    fast:     20
+    reckless: 27
+
+  terrain_modifier:
+    deep_desert:  0.85
+    high_desert:  0.90
+    plains:       1.00
+    swamp:        0.75
+    woodland:     0.90
+    urban_ruins:  0.80
+    coastal:      0.95
+
+  heat_zone_terrains: [deep_desert]
+
+scavenging:
+  success_rates:
+    west_rural: 0.25
+    west_city:  0.55
+    east_rural: 0.55
+    east_city:  0.70
+
+  yield_multipliers:
+    west_rural: 0.6
+    west_city:  1.0
+    east_rural: 1.0
+    east_city:  1.4
+
+  item_weights:
+    food:     0.35
+    water:    0.25
+    ammo:     0.20
+    medicine: 0.10
+    fuel:     0.10
+
+  item_exceptions:
+    ammo:
+      west_rural_bonus: 0.20
+      east_city_penalty: 0.15
+    water:
+      west_rural_bonus: 0.15
+      east_city_penalty: 0.10
+    medicine:
+      city_only: true
+    fuel:
+      base_success_rate: 0.35
+      city_bonus: 0.15
+
+  scavenge_yields:
+    food:     { min: 1, max: 4, unit: "days" }
+    water:    { min: 1, max: 3, unit: "days" }
+    ammo:     { min: 5, max: 20, unit: "rounds" }
+    medicine: { min: 1, max: 2, unit: "kits" }
+    fuel:     { min: 2, max: 6, unit: "gallons" }
+
+events:
+  disease:
+    base_chance_per_day: 0.05
+    modifiers:
+      bare_minimum_rations: 1.8
+      meager_rations: 1.3
+      river_crossing: 2.0
+      swamp_terrain: 1.5
+      bad_weather: 1.2
+    types:
+      - name: radiation_sickness
+        weight: 0.20
+        severity: moderate
+        health_damage_per_day: 15
+        cure: medicine
+      - name: infected_wound
+        weight: 0.30
+        severity: mild
+        health_damage_per_day: 8
+        cure: medicine
+      - name: dysentery
+        weight: 0.25
+        severity: moderate
+        health_damage_per_day: 12
+        cure: medicine
+      - name: heat_exhaustion
+        weight: 0.15
+        severity: mild
+        health_damage_per_day: 5
+        cure: rest
+        terrain_requirement: deep_desert
+      - name: fever
+        weight: 0.10
+        severity: severe
+        health_damage_per_day: 20
+        cure: medicine
+
+  breakdown:
+    base_chance_per_day: 0.06
+    modifiers:
+      vehicle_condition_below_50: 1.5
+      vehicle_condition_below_25: 2.5
+      reckless_pace: 1.4
+      rough_terrain: 1.3
+    types:
+      - name: flat_tire
+        weight: 0.40
+        fix_with: spare_tire
+        scavenge_fix: true
+        trade_goods_cost: { min: 3, max: 6 }
+        time_days: 1
+        vehicle_damage: 0
+      - name: engine_failure
+        weight: 0.25
+        fix_with: engine_kit
+        scavenge_fix: true
+        trade_goods_cost: { min: 8, max: 15 }
+        time_days: 2
+        vehicle_damage: 10
+      - name: minor_damage
+        weight: 0.35
+        fix_with: generic_parts
+        scavenge_fix: true
+        trade_goods_cost: { min: 2, max: 5 }
+        time_days: 1
+        vehicle_damage: 5
+
+  raider_attack:
+    base_chance_per_day: 0.04
+    modifiers:
+      las_vegas_region: 2.5
+      high_danger_landmark: 2.0
+      low_ammo_below_10: 1.4
+    outcomes:
+      - result: repelled
+        weight: 0.50
+        ammo_cost: { min: 5, max: 15 }
+        health_damage: { min: 0, max: 10 }
+      - result: ambushed
+        weight: 0.30
+        trade_goods_stolen: { min: 2, max: 8 }
+        health_damage: { min: 5, max: 20 }
+      - result: fled
+        weight: 0.20
+        fuel_cost: 3
+        health_damage: 0
+
+  weather_change:
+    chance_per_day: 0.25
+    distributions:
+      january:   { clear: 0.20, cloudy: 0.30, rain: 0.25, storm: 0.15, extreme_cold: 0.10 }
+      february:  { clear: 0.25, cloudy: 0.30, rain: 0.25, storm: 0.10, extreme_cold: 0.10 }
+      march:     { clear: 0.35, cloudy: 0.30, rain: 0.25, storm: 0.10, extreme_cold: 0.00 }
+      april:     { clear: 0.40, cloudy: 0.30, rain: 0.20, storm: 0.10, extreme_cold: 0.00 }
+      may:       { clear: 0.35, cloudy: 0.25, rain: 0.20, storm: 0.10, extreme_heat: 0.10 }
+      june:      { clear: 0.30, cloudy: 0.20, rain: 0.15, storm: 0.10, extreme_heat: 0.25 }
+      july:      { clear: 0.25, cloudy: 0.20, rain: 0.15, storm: 0.15, extreme_heat: 0.25 }
+      august:    { clear: 0.30, cloudy: 0.20, rain: 0.20, storm: 0.15, extreme_heat: 0.15 }
+      september: { clear: 0.40, cloudy: 0.25, rain: 0.20, storm: 0.10, extreme_heat: 0.05 }
+      october:   { clear: 0.45, cloudy: 0.30, rain: 0.20, storm: 0.05, extreme_cold: 0.00 }
+      november:  { clear: 0.30, cloudy: 0.30, rain: 0.25, storm: 0.10, extreme_cold: 0.05 }
+      december:  { clear: 0.20, cloudy: 0.30, rain: 0.20, storm: 0.15, extreme_cold: 0.15 }
+
+  weather_travel_modifier:
+    clear:        1.00
+    cloudy:       0.95
+    rain:         0.80
+    storm:        0.55
+    extreme_heat: 0.70
+    extreme_cold: 0.60
+
+  weather_water_modifier:
+    extreme_heat: 1.6
+    clear:        1.0
+    cloudy:       1.0
+    rain:         0.8
+    storm:        0.8
+    extreme_cold: 1.0
+
+health:
+  max: 100
+  thresholds:
+    good:     { min: 75, max: 100 }
+    fair:     { min: 45, max: 74 }
+    poor:     { min: 20, max: 44 }
+    critical: { min: 1,  max: 19 }
+    dead:     0
+
+  medicine_recovery_per_kit: 30
+  rest_recovery_per_day: 8
+  morale_death_penalty: 5
+
+vehicle:
+  starting_condition: 100
+  daily_wear: 1
+  fast_pace_wear: 2
+  reckless_pace_wear: 4
+  rough_terrain_wear: 2
+
+parts:
+  spare_tire:
+    fixes: [flat_tire]
+    engineer_covers_events: 2
+    carpenter_covers_events: 1
+  engine_kit:
+    fixes: [engine_failure]
+    engineer_covers_events: 2
+    carpenter_covers_events: 1
+  generic_parts:
+    fixes: [minor_damage]
+    engineer_covers_events: 2
+    carpenter_covers_events: 1
+
+game_over:
+  win_condition: "reach Washington DC"
+  loss_conditions:
+    - all_party_dead
+    - out_of_fuel_stranded
+    - vehicle_condition_zero
+  max_days: 180

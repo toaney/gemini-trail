@@ -1,0 +1,43 @@
+import os
+from contextlib import asynccontextmanager
+from dotenv import load_dotenv
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from psycopg_pool import AsyncConnectionPool
+from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+
+from agent.graph import build_graph
+from api.routes import router
+
+load_dotenv()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    db_url = os.getenv("DATABASE_URL")
+
+    pool = AsyncConnectionPool(conninfo=db_url, max_size=20, open=False)
+    await pool.open()
+
+    checkpointer = AsyncPostgresSaver(pool)
+    await checkpointer.setup()
+
+    app.state.graph = build_graph().compile(checkpointer=checkpointer)
+    app.state.pool = pool
+
+    yield
+
+    await pool.close()
+
+
+app = FastAPI(title="Gemini Trail", lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.include_router(router, prefix="/api")
