@@ -6,6 +6,7 @@ import StatsPanel from "@/components/StatsPanel";
 import NarrativePanel from "@/components/NarrativePanel";
 import ActionInput from "@/components/ActionInput";
 import TrailMap from "@/components/TrailMap";
+import DevSaveMenu from "@/components/DevSaveMenu";
 
 const OCCUPATIONS = [
   { id: "bunker_ceo", label: "Bunker CEO", desc: "High resources, great negotiator. Soft hands." },
@@ -21,7 +22,7 @@ export default function Page() {
   const [occupation, setOccupation] = useState("engineer");
   const [month, setMonth] = useState("March");
 
-  const { narrative, gameState, suggestions, streaming, gameOver, autoTravel, startNewGame, sendAction, toggleAutoTravel } = useGameStream();
+  const { narrative, gameState, suggestions, streaming, gameOver, autoTravel, threadId, startNewGame, sendAction, toggleAutoTravel, loadSave } = useGameStream();
 
   const handleStart = async () => {
     if (partyNames.some(n => !n.trim())) return;
@@ -46,7 +47,7 @@ export default function Page() {
             onClick={() => setScreen("setup")}
             className="w-full py-3 border border-rust-500 text-rust-400 hover:bg-rust-500 hover:text-ash-900 transition-colors text-sm tracking-widest uppercase"
           >
-            Begin Journey
+            New Game
           </button>
         </div>
       </div>
@@ -110,7 +111,7 @@ export default function Page() {
             disabled={partyNames.some(n => !n.trim())}
             className="w-full py-3 border border-rust-500 text-rust-400 hover:bg-rust-500 hover:text-ash-900 transition-colors text-sm tracking-widest uppercase disabled:opacity-40 disabled:cursor-not-allowed"
           >
-            Head to the Market
+            Begin Journey
           </button>
         </div>
       </div>
@@ -135,6 +136,15 @@ export default function Page() {
           <span className={gameOver.outcome === "win" ? "text-green-400" : "text-red-400"}>
             {gameOver.outcome === "win" ? "YOU MADE IT" : "GAME OVER"} — {gameOver.reason}
           </span>
+        )}
+        {screen === "game" && (
+          <DevSaveMenu
+            threadId={threadId}
+            gameState={gameState}
+            onLoad={(tid, gs, narrative, suggestions) => {
+              loadSave(tid, gs, narrative, suggestions);
+            }}
+          />
         )}
       </header>
 

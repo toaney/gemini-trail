@@ -38,7 +38,8 @@ def check_win_loss(game: dict) -> tuple[str | None, str | None]:
         return "loss", "Your entire party has perished."
 
     if game["supplies"].get("fuel_gallons", 0) <= 0 and game.get("phase") == "on_trail" and game.get("day", 0) > 0:
-        return "loss", "You ran out of fuel and are stranded."
+        game["phase"] = "stranded"
+        return None, None
 
     if game.get("vehicle_condition", 100) <= 0:
         return "loss", "Your vehicle is destroyed."

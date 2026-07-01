@@ -49,9 +49,12 @@ def buy_item(game: dict, item: str, quantity: int, landmark_key: str) -> tuple[d
     if item not in inventory or not inventory[item].get("available"):
         return game, f"{item} is not available here."
 
-    available_stock = inventory[item]["stock"]
-    if quantity > available_stock:
-        return game, f"Only {available_stock} {item} in stock."
+    is_preparation = game.get("phase") == "preparation"
+
+    if not is_preparation:
+        available_stock = inventory[item]["stock"]
+        if quantity > available_stock:
+            return game, f"Only {available_stock} {item} in stock."
 
     base_price = inventory[item]["price"]
     price_per_unit = calculate_price(base_price, store_cfg, occupation, cfg)
@@ -61,10 +64,12 @@ def buy_item(game: dict, item: str, quantity: int, landmark_key: str) -> tuple[d
         return game, f"Not enough trade goods. Need {total_cost}, have {game['supplies']['trade_goods']}."
 
     game["supplies"]["trade_goods"] -= total_cost
-    inventory[item]["stock"] -= quantity
-    if inventory[item]["stock"] == 0:
-        inventory[item]["available"] = False
-    game["store_inventory"] = inventory
+
+    if not is_preparation:
+        inventory[item]["stock"] -= quantity
+        if inventory[item]["stock"] == 0:
+            inventory[item]["available"] = False
+        game["store_inventory"] = inventory
 
     supply_map = {
         "food":          ("food_days",      3.0 * quantity),

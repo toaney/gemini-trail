@@ -1,5 +1,6 @@
 import random
 from .loader import get_config
+from .consumption import deprivation_modifiers
 
 
 def attempt_scavenge(game: dict, item: str | None = None) -> dict:
@@ -35,6 +36,8 @@ def attempt_scavenge(game: dict, item: str | None = None) -> dict:
             success_rate += water_exc["west_rural_bonus"]
         elif region == "east" and at_landmark:
             success_rate = max(0.05, success_rate - water_exc["east_city_penalty"])
+
+    success_rate *= deprivation_modifiers(game)["scavenge"]
 
     if random.random() > success_rate:
         return {"success": False, "item": item}

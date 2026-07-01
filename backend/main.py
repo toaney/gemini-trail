@@ -21,6 +21,15 @@ async def lifespan(app: FastAPI):
     # so run migrations with a direct autocommit connection before opening the pool.
     async with await AsyncConnection.connect(db_url, autocommit=True) as conn:
         await AsyncPostgresSaver(conn).setup()
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS game_saves (
+                id SERIAL PRIMARY KEY,
+                name TEXT NOT NULL,
+                thread_id TEXT NOT NULL,
+                game_state JSONB NOT NULL,
+                created_at TIMESTAMPTZ DEFAULT NOW()
+            )
+        """)
 
     pool = AsyncConnectionPool(conninfo=db_url, max_size=20, open=False)
     await pool.open()

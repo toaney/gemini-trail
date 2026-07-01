@@ -4,7 +4,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
 from langchain_core.messages import HumanMessage
 
-from api.schemas import NewGameRequest, ActionRequest, GameSessionResponse
+from api.schemas import NewGameRequest, ActionRequest, GameSessionResponse, SaveRequest, SavePoint, LoadRequest
 from agent.state import GameData, PartyMember, Supplies
 
 router = APIRouter()
@@ -106,6 +106,80 @@ async def get_game_state(thread_id: str, request: Request):
         return {"error": "Game not found"}
     game = state.values.get("game", {})
     return {"game": _safe_game_state(game)}
+
+
+@router.post("/game/save")
+async def save_game(req: SaveRequest, request: Request):
+    pool = request.app.state.pool
+    async with pool.connection() as conn:
+        await conn.execute(
+            "INSERT INTO game_saves (name, thread_id, game_state) VALUES (%s, %s, %s)",
+            (req.name, req.thread_id, json.dumps(req.game_state)),
+        )
+    return {"ok": True}
+
+
+@router.get("/game/saves", response_model=list[SavePoint])
+async def list_saves(request: Request):
+    pool = request.app.state.pool
+    async with pool.connection() as conn:
+        rows = await conn.execute(
+            "SELECT id, name, thread_id, game_state, created_at FROM game_saves ORDER BY created_at DESC LIMIT 50"
+        )
+        saves = []
+        async for row in rows:
+            gs = row[3] if isinstance(row[3], dict) else json.loads(row[3])
+            saves.append(SavePoint(
+                id=row[0],
+                name=row[1],
+                thread_id=row[2],
+                day=gs.get("day", 0),
+                distance=gs.get("distance_traveled", 0.0),
+                phase=gs.get("phase", "unknown"),
+                created_at=row[4].isoformat(),
+            ))
+    return saves
+
+
+@router.post("/game/load")
+async def load_save(req: LoadRequest, request: Request):
+    pool = request.app.state.pool
+    graph = request.app.state.graph
+
+    async with pool.connection() as conn:
+        rows = await conn.execute(
+            "SELECT thread_id, game_state FROM game_saves WHERE id = %s", (req.save_id,)
+        )
+        row = await rows.fetchone()
+        if not row:
+            return {"error": "Save not found"}, 404
+
+    _, game_state = row
+    gs = game_state if isinstance(game_state, dict) else json.loads(game_state)
+
+    new_thread_id = str(uuid.uuid4())
+    config = {"configurable": {"thread_id": new_thread_id}}
+
+    result = await graph.ainvoke(
+        {"messages": [HumanMessage(content="view supplies")], "game": gs},
+        config=config,
+    )
+
+    game = result.get("game", {})
+    return {
+        "thread_id": new_thread_id,
+        "game_state": _safe_game_state(game),
+        "narrative": game.get("_last_narrative", ""),
+        "suggestions": game.get("suggestions", []),
+    }
+
+
+@router.delete("/game/save/{save_id}")
+async def delete_save(save_id: int, request: Request):
+    pool = request.app.state.pool
+    async with pool.connection() as conn:
+        await conn.execute("DELETE FROM game_saves WHERE id = %s", (save_id,))
+    return {"ok": True}
 
 
 @router.get("/health")

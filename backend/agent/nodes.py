@@ -6,6 +6,7 @@ from langchain_core.messages import SystemMessage, HumanMessage
 
 from agent.state import GameState
 from agent.prompts import build_system_prompt, build_turn_context
+from agent.templates import build_narrative, get_suggestions
 from engine.loader import get_config
 from engine import (
     consumption as cons_engine,
@@ -17,10 +18,11 @@ from engine import (
 )
 
 
-def _get_llm() -> ChatGoogleGenerativeAI:
-    model = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+_FALLBACK_MODELS = ["gemini-3.5-flash", "gemini-3.1-flash-lite"]
+
+def _get_llm(model: str | None = None) -> ChatGoogleGenerativeAI:
     return ChatGoogleGenerativeAI(
-        model=model,
+        model=model or os.getenv("GEMINI_MODEL", _FALLBACK_MODELS[0]),
         google_api_key=os.getenv("GEMINI_API_KEY"),
         temperature=0.8,
     )
@@ -107,6 +109,12 @@ def engine_node(state: GameState) -> dict:
     elif phase == "event":
         action_context = _handle_event_action(game, last_message)
 
+    elif phase == "stranded":
+        game["day"] = game.get("day", 0) + 1
+        game, starvation_events = cons_engine.apply_starvation(game)
+        events_triggered.extend(starvation_events)
+        action_context = _handle_stranded_action(game, last_message)
+
     game = cond_engine.update_health_labels(game)
     outcome, reason = cond_engine.check_win_loss(game)
     if outcome:
@@ -125,7 +133,9 @@ def _handle_preparation(game: dict, message: str) -> dict:
     cfg = get_config()
 
     buy_keywords = ["buy", "get", "purchase", "take", "grab"]
-    leave_keywords = ["go", "leave", "head out", "depart", "hit the road", "ready", "let's roll", "move out"]
+    # Only explicit departure phrases — avoids "go buy fuel" or "get ready" accidentally departing
+    leave_keywords = ["head out", "depart", "hit the road", "let's roll", "move out",
+                      "begin journey", "begin the journey", "start journey", "start the journey"]
 
     if any(kw in msg for kw in leave_keywords):
         game["phase"] = "on_trail"
@@ -148,7 +158,10 @@ def _handle_trail_action(game: dict, message: str) -> dict:
         game["day"] += 1
         return {"action": "rest"}
 
-    if any(kw in msg for kw in ["scavenge", "search", "look for", "find", "forage"]):
+    if msg.strip() == "scavenge for supplies":
+        return {"action": "select_scavenge"}
+
+    if any(kw in msg for kw in ["scavenge", "salvage", "search", "look for", "find", "forage"]):
         item = _extract_item(msg)
         result = scav_engine.attempt_scavenge(game, item)
         game = scav_engine.apply_scavenge_result(game, result)
@@ -160,11 +173,17 @@ def _handle_trail_action(game: dict, message: str) -> dict:
             game, msg_out = cond_engine.apply_medicine(game, target)
             return {"action": "use_medicine", "target": target, "result": msg_out}
 
+    if msg.strip() in ("change pace", "change my pace"):
+        return {"action": "select_pace"}
+
+    if "keep current pace" in msg:
+        return {"action": "change_pace", "pace": game.get("pace", "steady")}
+
     if any(kw in msg for kw in ["fast", "speed up", "push harder", "reckless"]):
         game["pace"] = "fast" if "fast" in msg else "reckless"
         return {"action": "change_pace", "pace": game["pace"]}
 
-    if any(kw in msg for kw in ["slow", "steady", "careful"]):
+    if any(kw in msg for kw in ["slow", "steady", "careful", "moderate", "normal"]):
         game["pace"] = "steady"
         return {"action": "change_pace", "pace": "steady"}
 
@@ -178,22 +197,42 @@ def _handle_trail_action(game: dict, message: str) -> dict:
         game["rations"] = "filling"
         return {"action": "change_rations", "rations": "filling"}
 
-    return {"action": "travel"}
+    if any(kw in msg for kw in ["attack", "raid", "ambush", "rob", "caravan", "intercept"]):
+        return _do_caravan_attack(game)
+
+    _TRAVEL_WORDS = {"drive", "travel", "go", "move", "continue", "push", "head", "advance", "ride", "roll", "keep"}
+    if any(w in msg.split() for w in _TRAVEL_WORDS) or not msg.strip():
+        return {"action": "travel"}
+
+    return {"action": "travel", "is_freeform": True}
 
 
 def _handle_landmark_action(game: dict, message: str) -> dict:
     msg = message.lower()
 
-    leave_keywords = ["leave", "go", "continue", "head out", "hit the road", "move on", "depart"]
-    if any(kw in msg for kw in leave_keywords):
-        game["phase"] = "on_trail"
-        game["current_landmark"] = None
-        game["store_inventory"] = {}
-        game["current_store"] = None
-        return {"action": "leave_settlement"}
+    if any(kw in msg for kw in ["marketplace", "market", "shop", "store", "trade post"]):
+        landmark = game.get("current_landmark", "")
+        store_key = landmark.lower().replace(" ", "_").replace(",", "").replace(".", "")
+        occupation = game.get("occupation", "carpenter")
+        if not game.get("store_inventory"):
+            game["store_inventory"] = store_engine.get_store_inventory(store_key, occupation)
+            game["current_store"] = store_key
+        return {"action": "select_marketplace"}
 
     if any(kw in msg for kw in ["buy", "purchase", "get", "trade"]):
         return _parse_buy_action(game, message)
+
+    if msg.strip() == "scavenge for supplies":
+        return {"action": "select_scavenge"}
+
+    if any(kw in msg for kw in ["scavenge", "salvage", "search", "look for", "find", "forage"]):
+        item = _extract_item(msg)
+        result = scav_engine.attempt_scavenge(game, item)
+        game = scav_engine.apply_scavenge_result(game, result)
+        return {"action": "scavenge", "result": result}
+
+    if any(kw in msg for kw in ["attack", "raid", "ambush", "rob", "caravan", "intercept"]):
+        return _do_caravan_attack(game)
 
     if any(kw in msg for kw in ["rest", "sleep", "camp", "stay"]):
         game = cons_engine.apply_rest(game)
@@ -206,7 +245,18 @@ def _handle_landmark_action(game: dict, message: str) -> dict:
             game, result = cond_engine.apply_medicine(game, target)
             return {"action": "use_medicine", "target": target, "result": result}
 
-    return {"action": "talk"}
+    leave_keywords = ["leave settlement", "leave", "continue", "head out", "hit the road", "move on", "depart", "push on"]
+    if any(kw in msg for kw in leave_keywords):
+        game["phase"] = "on_trail"
+        game["current_landmark"] = None
+        game["store_inventory"] = {}
+        game["current_store"] = None
+        return {"action": "leave_settlement"}
+
+    if any(kw in msg for kw in ["look", "explore", "inspect", "check", "survey", "examine", "around", "what"]):
+        return {"action": "talk"}
+
+    return {"action": "talk", "is_freeform": True}
 
 
 def _handle_event_action(game: dict, message: str) -> dict:
@@ -224,6 +274,81 @@ def _handle_event_action(game: dict, message: str) -> dict:
             return _apply_river_crossing(game, "detour")
 
     return {"action": "wait", "message": "Waiting at event location."}
+
+
+def _handle_stranded_action(game: dict, message: str) -> dict:
+    import random
+    msg = message.lower()
+
+    # Walk on foot — slow progress, burns extra food/water
+    if any(kw in msg for kw in ["walk", "foot", "hike", "march", "trek", "on foot", "keep moving", "continue", "move"]):
+        cfg = get_config()
+        miles = random.randint(10, 20)
+        game["distance_traveled"] = game.get("distance_traveled", 0.0) + miles
+        game = cons_engine.apply_walking_consumption(game)
+        # Check if walking brought us to a landmark
+        from engine.travel import _check_landmark_arrival, _set_next_landmark
+        arrived = _check_landmark_arrival(game, cfg)
+        if arrived:
+            landmark = next((lm for lm in cfg["trail"]["landmarks"] if lm["name"] == arrived), None)
+            game["current_landmark"] = arrived
+            if landmark:
+                game["terrain"] = landmark["terrain"]
+                game["region"] = landmark["region"]
+                game["phase"] = "at_landmark"
+            _set_next_landmark(game, cfg, arrived)
+            return {"action": "walk", "miles": miles, "arrived_at": arrived}
+        return {"action": "walk", "miles": miles}
+
+    # Scavenge for fuel
+    if any(kw in msg for kw in ["scavenge", "search", "look", "find", "fuel", "gas", "petrol", "forage"]):
+        import random
+        chance = 0.35
+        if game.get("terrain") in ["urban_ruins", "coastal"]:
+            chance = 0.50
+        elif game.get("terrain") in ["deep_desert", "high_desert"]:
+            chance = 0.20
+        if random.random() < chance:
+            gallons = random.randint(5, 20)
+            game["supplies"]["fuel_gallons"] = game["supplies"].get("fuel_gallons", 0) + gallons
+            game["phase"] = "on_trail"
+            return {"action": "scavenge_fuel", "found": True, "gallons": gallons}
+        return {"action": "scavenge_fuel", "found": False}
+
+    # Attack caravan
+    if any(kw in msg for kw in ["attack", "raid", "ambush", "rob", "caravan", "vehicle", "intercept", "assault"]):
+        return _do_caravan_attack(game)
+
+    return {"action": "stranded_wait", "is_freeform": True}
+
+
+def _do_caravan_attack(game: dict) -> dict:
+    import random
+    ammo  = game["supplies"].get("ammo_rounds", 0)
+    alive = sum(1 for m in game["party"] if m["alive"])
+    chance = min(0.75, 0.2 + (ammo / 100) * 0.3 + (alive / 4) * 0.25)
+    ammo_spent = min(ammo, random.randint(5, 15))
+    game["supplies"]["ammo_rounds"] = max(0, ammo - ammo_spent)
+
+    was_stranded = game.get("phase") == "stranded"
+    if random.random() < chance:
+        fuel_gained  = random.randint(15, 40)
+        food_gained  = round(random.uniform(2, 8), 1)
+        trade_gained = random.randint(3, 12)
+        game["supplies"]["fuel_gallons"] = round(game["supplies"].get("fuel_gallons", 0) + fuel_gained, 2)
+        game["supplies"]["food_days"]    = round(game["supplies"].get("food_days", 0) + food_gained, 2)
+        game["supplies"]["trade_goods"]  = game["supplies"].get("trade_goods", 0) + trade_gained
+        if was_stranded:
+            game["phase"] = "on_trail"
+        return {"action": "attack_caravan", "success": True, "was_stranded": was_stranded,
+                "fuel_gained": fuel_gained, "food_gained": food_gained,
+                "trade_gained": trade_gained, "ammo_spent": ammo_spent}
+    else:
+        for member in game["party"]:
+            if member["alive"]:
+                member["health"] = max(0, member["health"] - random.randint(10, 25))
+        return {"action": "attack_caravan", "success": False, "was_stranded": was_stranded,
+                "ammo_spent": ammo_spent}
 
 
 def _apply_river_crossing(game: dict, method: str) -> dict:
@@ -255,6 +380,9 @@ def _apply_river_crossing(game: dict, method: str) -> dict:
     game["current_landmark"] = None
     game["region"] = "east"
 
+    from engine.travel import _set_next_landmark
+    _set_next_landmark(game, cfg, "Mississippi Crossing")
+
     return {"action": "river_crossing", "method": method, "days": option["time_days"],
             "vehicle_damage": vehicle_damage}
 
@@ -270,9 +398,11 @@ def _parse_buy_action(game: dict, message: str) -> dict:
     }
 
     msg = message.lower()
+    # Strip "— N goods" price suffix to avoid matching "goods" as trade_goods
+    item_msg = msg.split("—")[0] if "—" in msg else msg
     found_item = None
     for keyword, item_key in item_map.items():
-        if keyword in msg:
+        if keyword in item_msg:
             found_item = item_key
             break
 
@@ -281,7 +411,9 @@ def _parse_buy_action(game: dict, message: str) -> dict:
 
     quantity = 1
     import re
-    nums = re.findall(r'\b(\d+)\b', msg)
+    # Strip "— N goods" price suffix so "Buy fuel — 4 goods" doesn't parse 4 as quantity
+    qty_msg = msg.split("—")[0] if "—" in msg else msg
+    nums = re.findall(r'\b(\d+)\b', qty_msg)
     if nums:
         quantity = int(nums[0])
 
@@ -307,219 +439,97 @@ def _extract_name(game: dict, message: str) -> str | None:
     return None
 
 
-# Actions that never need LLM narration when no events fired
-TEMPLATE_ACTIONS = {"travel", "change_pace", "change_rations", "rest"}
-
-
-def _invoke_with_retry(llm, messages, max_retries: int = 3):
-    """Invoke the LLM with exponential backoff on 429 rate-limit errors."""
-    delay = 20
-    for attempt in range(max_retries):
-        try:
-            return llm.invoke(messages)
-        except Exception as e:
-            err = str(e)
-            if "429" in err or "RESOURCE_EXHAUSTED" in err:
-                if attempt < max_retries - 1:
-                    time.sleep(delay)
-                    delay *= 2
-                    continue
-            raise
-    return llm.invoke(messages)
+def _invoke_with_retry(llm, messages, max_retries: int = 2):
+    """Try primary model, then fall back through FALLBACK_MODELS on quota/not-found errors."""
+    models_to_try = [llm] + [_get_llm(m) for m in _FALLBACK_MODELS[1:]]
+    last_err = None
+    for candidate in models_to_try:
+        delay = 15
+        for attempt in range(max_retries):
+            try:
+                return candidate.invoke(messages)
+            except Exception as e:
+                err = str(e)
+                last_err = e
+                if "429" in err or "RESOURCE_EXHAUSTED" in err:
+                    if attempt < max_retries - 1:
+                        time.sleep(delay)
+                        delay *= 2
+                        continue
+                    break  # exhausted retries for this model, try next
+                if "404" in err or "NOT_FOUND" in err:
+                    break  # model gone, try next immediately
+                raise  # unexpected error — surface it
+    raise last_err
 
 
 def narrate_node(state: GameState) -> dict:
-    """Calls Gemini to generate narrative and suggestions, with a fast-path for routine travel."""
+    """Template-first narrator. LLM only fires for genuinely freeform player input."""
     game = dict(state["game"])
     messages = list(state.get("messages", []))
     last_player_message = messages[-1].content if messages else ""
 
     events = game.pop("_events_this_turn", [])
     action_context = game.pop("_action_context", {})
-    action = action_context.get("action")
 
-    # Fast-path: skip the LLM whenever a routine on-trail action produced no events
-    is_template = (
-        action in TEMPLATE_ACTIONS
-        and not events
-        and game.get("phase") == "on_trail"
-        and not game.get("outcome")
-        and not action_context.get("arrived_at")
-    )
-
-    if is_template:
-        game["suggestions"] = ["Continue traveling", "Rest for the day", "Scavenge for supplies", "Change pace"]
-        game["_last_narrative"] = _template_narrative(game, action_context)
+    # ── LLM path: freeform player input only ──────────────────────────────────
+    if action_context.get("is_freeform") and not game.get("outcome"):
+        game["_last_narrative"] = _llm_freeform(game, last_player_message, events, action_context)
+        game["suggestions"] = get_suggestions(game, action_context.get("action", "travel"))
         return {**state, "game": game}
 
-    # Full LLM path
-    events_summary = _summarize_events(events, action_context)
-    system_prompt = build_system_prompt(game)
-    turn_context = build_turn_context(game, events_summary)
-
-    llm = _get_llm()
-    messages_to_send = [
-        SystemMessage(content=system_prompt),
-        HumanMessage(content=f"{turn_context}\n\nPLAYER: {last_player_message}\n\nRespond with JSON only."),
-    ]
-    response = _invoke_with_retry(llm, messages_to_send)
-
-    try:
-        raw = response.content.strip()
-        if raw.startswith("```"):
-            raw = raw.split("```")[1]
-            if raw.startswith("json"):
-                raw = raw[4:]
-        result = json.loads(raw)
-    except Exception:
-        result = {
-            "narrative": response.content,
-            "action_type": "unknown",
-            "action_params": {},
-            "state_delta": {},
-            "suggestions": ["Continue driving", "Check your supplies", "Rest here"],
-        }
-
-    VALID_PACES = {"steady", "fast", "reckless"}
-    PACE_ALIASES = {"normal": "steady", "moderate": "steady", "slow": "steady", "quick": "fast", "hurry": "fast"}
-    VALID_RATIONS = {"meager", "filling", "bare_minimum", "normal"}
-
-    if result.get("state_delta"):
-        delta = result["state_delta"]
-        if "pace" in delta:
-            raw_pace = str(delta["pace"]).lower()
-            game["pace"] = PACE_ALIASES.get(raw_pace, raw_pace) if raw_pace not in VALID_PACES else raw_pace
-            if game["pace"] not in VALID_PACES:
-                game["pace"] = "steady"
-        if "rations" in delta:
-            raw_rations = str(delta["rations"]).lower()
-            game["rations"] = raw_rations if raw_rations in VALID_RATIONS else "filling"
-        if "weather" in delta:
-            game["weather"] = delta["weather"]
-
-    game["suggestions"] = result.get("suggestions", [])
-    game["_last_narrative"] = result.get("narrative", "")
-
+    # ── Template path: everything else ────────────────────────────────────────
+    game["_last_narrative"] = build_narrative(game, action_context, events)
+    game["suggestions"] = get_suggestions(game, action_context.get("action", "travel"))
     return {**state, "game": game}
 
 
-_TERRAIN_DESC = {
-    "coastal":     "along the crumbling coastal highway",
-    "deep_desert": "across scorched, sun-blasted desert",
-    "high_desert": "through the sparse high desert",
-    "plains":      "across the open, wind-swept plains",
-    "swamp":       "through dense, fetid swampland",
-    "woodland":    "through overgrown, reclaimed woodland",
-    "urban_ruins": "through the shattered remnants of a city",
-}
+def _llm_freeform(game: dict, player_message: str, events: list, action_context: dict) -> str:
+    """Call the LLM for a freeform player message. Returns narrative string."""
+    system_prompt = build_system_prompt(game)
+    events_text = _summarize_events_brief(events, action_context)
+    prompt = (
+        f"Current state: Day {game.get('day')}, {game.get('distance_traveled', 0):.0f} miles traveled, "
+        f"phase={game.get('phase')}, terrain={game.get('terrain')}, weather={game.get('weather')}.\n"
+        f"Events this turn: {events_text}\n\n"
+        f"PLAYER: {player_message}\n\n"
+        "Respond with 2-4 sentences of in-world narrative. Plain text only, no JSON."
+    )
 
-_WEATHER_LINE = {
-    "clear":        "Clear skies.",
-    "cloudy":       "Heavy clouds roll in from the west.",
-    "rain":         "Steady rain drums on the roof.",
-    "storm":        "A violent storm batters the vehicle.",
-    "extreme_heat": "The heat is punishing, radiating off the asphalt.",
-    "extreme_cold": "Bitter cold seeps through every seam.",
-}
-
-
-def _template_narrative(game: dict, action_context: dict) -> str:
-    action  = action_context.get("action", "travel")
-    day     = game.get("day", 0)
-    dist    = game.get("distance_traveled", 0.0)
-    terrain = game.get("terrain", "plains")
-    weather = game.get("weather", "clear")
-    next_lm = game.get("next_landmark", "the next settlement")
-    supplies = game.get("supplies", {})
-    food  = supplies.get("food_days", 0)
-    water = supplies.get("water_days", 0)
-    fuel  = supplies.get("fuel_gallons", 0)
-
-    terrain_desc = _TERRAIN_DESC.get(terrain, "down the broken road")
-    weather_line = _WEATHER_LINE.get(weather, "")
-
-    if action == "rest":
-        parts = [
-            f"Day {day}. The party makes camp {terrain_desc}. {weather_line}".strip(),
-            "You rest through the night, letting exhaustion ease out of tired muscles.",
-            f"{dist:.0f} miles from Long Beach. Next stop: {next_lm}.",
-        ]
-    elif action == "change_pace":
-        pace = game.get("pace", "steady")
-        pace_line = {
-            "steady":   "You ease off, settling into a steady, fuel-conscious rhythm.",
-            "fast":     "You push harder. The engine climbs, eating up road.",
-            "reckless": "Pedal down. The vehicle screams east. Every mile costs.",
-        }.get(pace, "You adjust your pace.")
-        parts = [
-            f"Day {day}. {pace_line} {weather_line}".strip(),
-            f"{dist:.0f} miles from Long Beach. Next stop: {next_lm}.",
-        ]
-    elif action == "change_rations":
-        rations = game.get("rations", "filling")
-        rations_line = {
-            "meager":       "Rations cut. Everyone gets less. Hunger is a passenger now.",
-            "bare_minimum": "Bare minimum. Just enough to keep moving.",
-            "filling":      "Full rations restored. The party eats well for now.",
-            "normal":       "Rations back to normal.",
-        }.get(rations, "Rations adjusted.")
-        parts = [
-            f"Day {day}. {rations_line}",
-            f"{dist:.0f} miles from Long Beach. Next stop: {next_lm}.",
-        ]
-    else:  # travel
-        parts = [
-            f"Day {day}. You push {terrain_desc}. {weather_line}".strip(),
-            f"{dist:.0f} miles from Long Beach. Next stop: {next_lm}.",
-        ]
-
-    warnings = []
-    if food < 5:     warnings.append("food critically low")
-    elif food < 15:  warnings.append("food running short")
-    if water < 3:    warnings.append("water nearly gone")
-    elif water < 10: warnings.append("water getting scarce")
-    if fuel < 10:    warnings.append("fuel dangerously low")
-    elif fuel < 20:  warnings.append("fuel dropping")
-    if warnings:
-        parts.append(f"Warning: {', '.join(warnings)}.")
-
-    return " ".join(parts)
+    llm = _get_llm()
+    try:
+        response = _invoke_with_retry(llm, [
+            SystemMessage(content=system_prompt),
+            HumanMessage(content=prompt),
+        ])
+        return response.content.strip()
+    except Exception as e:
+        # Fallback to template if LLM fails
+        from agent.templates import travel_narrative
+        return travel_narrative(game, events)
 
 
-def _summarize_events(events: list, action_context: dict) -> str:
-    lines = []
-
-    for event in events:
-        if isinstance(event, str):
-            lines.append(f"- {event}")
+def _summarize_events_brief(events: list, action_context: dict) -> str:
+    if not events:
+        return "none"
+    parts = []
+    for ev in events:
+        if not isinstance(ev, dict):
+            parts.append(str(ev))
             continue
-        etype = event.get("type", "")
-        if etype == "disease":
-            lines.append(f"- {event['victim']} contracted {event['disease']} ({event['severity']})")
-        elif etype == "breakdown":
-            fixed = "auto-fixed with parts" if event.get("auto_fixed") else "requires attention"
-            lines.append(f"- Vehicle breakdown: {event['breakdown']} — {fixed}")
-        elif etype == "raider":
-            lines.append(f"- Raider encounter: {event['result']}")
-        elif etype == "weather_change":
-            lines.append(f"- Weather changed to: {event['new_weather']}")
-        elif event in ["starvation", "dehydration"]:
-            lines.append(f"- Party suffering from {event}")
-
-    action = action_context.get("action", "")
-    if action == "buy":
-        lines.append(f"- {action_context.get('result', '')}")
-    elif action == "scavenge":
-        result = action_context.get("result", {})
-        if result.get("success"):
-            lines.append(f"- Scavenged {result['amount']} {result['unit']} of {result['item']}")
+        t = ev.get("type", "")
+        if t == "disease":
+            parts.append(f"{ev['victim']} contracted {ev['disease']}")
+        elif t == "breakdown":
+            parts.append(f"vehicle breakdown: {ev['breakdown']}")
+        elif t == "raider":
+            parts.append(f"raider encounter: {ev['result']}")
+        elif t == "weather_change":
+            parts.append(f"weather → {ev['new_weather']}")
+        elif t == "starvation":
+            parts.append("party starving")
+        elif t == "dehydration":
+            parts.append("party dehydrating")
         else:
-            lines.append(f"- Scavenge attempt failed — found nothing")
-    elif action == "use_medicine":
-        lines.append(f"- {action_context.get('result', '')}")
-    elif action == "river_crossing":
-        lines.append(f"- Mississippi crossing via {action_context.get('method')} — {action_context.get('days')} day(s)")
-    elif action == "arrive":
-        lines.append(f"- Arrived at {action_context.get('arrived_at')}")
-
-    return "\n".join(lines) if lines else "Uneventful turn."
+            parts.append(t or "unknown event")
+    return "; ".join(parts) if parts else "none"

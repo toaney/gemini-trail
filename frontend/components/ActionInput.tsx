@@ -38,7 +38,8 @@ export default function ActionInput({
   };
 
   const handleSuggestion = (text: string) => {
-    setInput(text);
+    if (streaming || disabled) return;
+    onSubmit(text);
   };
 
   return (

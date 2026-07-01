@@ -1,4 +1,5 @@
 from .loader import get_config
+from .consumption import deprivation_modifiers
 
 
 def calculate_distance(game: dict) -> float:
@@ -11,8 +12,9 @@ def calculate_distance(game: dict) -> float:
     base = travel["base_miles_per_day"].get(pace, travel["base_miles_per_day"]["steady"])
     terrain_mod = travel["terrain_modifier"].get(terrain, 1.0)
     weather_mod = cfg["events"]["weather_travel_modifier"].get(weather, 1.0)
+    deprivation_mod = deprivation_modifiers(game)["speed"]
 
-    return base * terrain_mod * weather_mod
+    return base * terrain_mod * weather_mod * deprivation_mod
 
 
 def advance_travel(game: dict) -> tuple[dict, str | None]:
@@ -25,12 +27,15 @@ def advance_travel(game: dict) -> tuple[dict, str | None]:
     arrived_at = _check_landmark_arrival(game, cfg)
     if arrived_at:
         landmark = next(
-            lm for lm in cfg["trail"]["landmarks"] if lm["name"] == arrived_at
+            (lm for lm in cfg["trail"]["landmarks"] if lm["name"] == arrived_at),
+            None,
         )
         game["current_landmark"] = arrived_at
-        game["terrain"] = landmark["terrain"]
-        game["region"] = landmark["region"]
-        game["phase"] = "event" if landmark["type"] == "event" else "at_landmark"
+        game["current_store"] = arrived_at.lower().replace(" ", "_")
+        if landmark:
+            game["terrain"] = landmark["terrain"]
+            game["region"] = landmark["region"]
+            game["phase"] = "event" if landmark["type"] == "event" else "at_landmark"
         _set_next_landmark(game, cfg, arrived_at)
 
     return game, arrived_at

@@ -108,10 +108,6 @@ export function useGameStream() {
       case "state_update":
         if (event.game) {
           setGameState(event.game);
-          // Stop auto-travel when player needs to make a decision
-          if (event.game.phase !== "on_trail") {
-            setAutoTravel(false);
-          }
         }
         break;
 
@@ -157,6 +153,20 @@ export function useGameStream() {
     setAutoTravel(prev => !prev);
   }, []);
 
+  const loadSave = useCallback((
+    newThreadId: string,
+    newGameState: GameState,
+    openingNarrative: string,
+    openingSuggestions: string[],
+  ) => {
+    setThreadId(newThreadId);
+    setGameState(newGameState);
+    setNarrative(openingNarrative ? [openingNarrative] : []);
+    setSuggestions(openingSuggestions?.length ? openingSuggestions : []);
+    setGameOver(null);
+    setAutoTravel(false);
+  }, []);
+
   return {
     narrative,
     gameState,
@@ -168,5 +178,6 @@ export function useGameStream() {
     startNewGame,
     sendAction,
     toggleAutoTravel,
+    loadSave,
   };
 }
