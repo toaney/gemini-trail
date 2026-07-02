@@ -22,6 +22,10 @@ export default $config({
     // 2. Deploy the Next.js Frontend App
     const frontendWeb = new sst.aws.Nextjs("NextJsFrontend", {
       path: "frontend", // Points to your frontend directory
+      domain: {
+        name: "nauticaltrail.com", // Porkbun domain
+        dns: false                 // Manually managing DNS records in Porkbun
+      },
       environment: {
         // Automatically injects the Lambda URL directly into your NextJS environment variables!
         NEXT_PUBLIC_API_URL: backendApi.url,
