@@ -1,0 +1,35 @@
+name: Deploy Serverless Fullstack App
+
+on:
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  Deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js Environment
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Project Workspace Dependencies
+        run: npm install
+
+      - name: Authenticate with AWS via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: us-east-1
+
+      - name: Build and Deploy using SST
+        run: npx sst deploy --stage prod
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
