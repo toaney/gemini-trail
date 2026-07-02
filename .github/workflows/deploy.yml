@@ -39,6 +39,6 @@ jobs:
           aws-region: us-west-1
 
       - name: Build and Deploy using SST
-        run: npx sst deploy --stage prod
+        run: npx sst deploy --stage prod --refresh
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
