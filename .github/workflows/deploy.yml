@@ -25,11 +25,17 @@ jobs:
         working-directory: frontend
         run: npm install
 
+      - name: Setup Python and uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+          enable-cache: true
+
       - name: Authenticate with AWS via OIDC
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region: us-east-1
+          aws-region: us-west-1
 
       - name: Build and Deploy using SST
         run: npx sst deploy --stage prod
