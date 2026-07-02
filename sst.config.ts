@@ -24,9 +24,8 @@ export default $config({
       path: "frontend", // Points to your frontend directory
       domain: {
         name: "nauticaltrail.com", // Porkbun domain
-        dns: sst.aws.dns({
-          authoritative: false // Tells SST: "Create the cert for me, I will supply records manually"
-        })
+        dns: false, // <-- Direct block: Tells SST "Do not run HostedZoneLookup or touch Route 53 at all"
+        cert: "arn:aws:acm:us-east-1:081275183860:certificate/YOUR-MANUAL-CERT-UUID" // <-- Your verified us-east-1 ARN string
       },
       environment: {
         // Automatically injects the Lambda URL directly into your NextJS environment variables!
