@@ -24,7 +24,9 @@ export default $config({
       path: "frontend", // Points to your frontend directory
       domain: {
         name: "nauticaltrail.com", // Porkbun domain
-        dns: false                 // Manually managing DNS records in Porkbun
+        dns: sst.aws.dns({
+          authoritative: false // Tells SST: "Create the cert for me, I will supply records manually"
+        })
       },
       environment: {
         // Automatically injects the Lambda URL directly into your NextJS environment variables!
