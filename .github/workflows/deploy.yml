@@ -38,7 +38,10 @@ jobs:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: us-west-1
 
+      - name: Refresh SST State Cache
+        run: npx sst refresh --stage prod
+
       - name: Build and Deploy using SST
-        run: npx sst deploy --stage prod --refresh
+        run: npx sst deploy --stage prod
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
