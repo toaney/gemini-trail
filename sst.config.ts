@@ -29,8 +29,7 @@ export default $config({
         cert: "arn:aws:acm:us-east-1:081275183860:certificate/b936e3d7-a130-4de1-817a-9525795754b9" // <-- Your verified us-east-1 ARN string
       },
       environment: {
-        // Automatically injects the Lambda URL directly into your NextJS environment variables!
-        NEXT_PUBLIC_API_URL: backendApi.url,
+        BACKEND_URL: backendApi.url,
       },
     });
 
