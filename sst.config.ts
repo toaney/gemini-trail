@@ -16,6 +16,7 @@ export default $config({
       url: true, // Provisions a FREE live URL directly from Lambda
       environment: {
         GEMINI_API_KEY: process.env.GEMINI_API_KEY || "",
+        DATABASE_URL: process.env.DATABASE_URL || "",
       },
     });
 
